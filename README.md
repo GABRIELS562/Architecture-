@@ -1,173 +1,202 @@
-Here's a cleaner, more professional architecture diagram using a combination of approaches that DevOps engineers commonly use:
-
 # Architecture Overview
 
 ## JAG DevOps Infrastructure
 
-### High-Level Architecture
+### 🏗️ Infrastructure Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              INTERNET USERS                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+                    │                                    │
+                    ▼                                    ▼
+    ┌───────────────────────────────┐    ┌──────────────────────────────┐
+    │     CLOUDFLARE CDN/TUNNEL     │    │         AWS EC2              │
+    │    *.jagdevops.co.za          │    │     jagdevops.com            │
+    └───────────────────────────────┘    └──────────────────────────────┘
+                    │                                    │
+                    │                                    │
+    ┌───────────────▼───────────────┐    ┌──────────────▼───────────────┐
+    │   SERVER 1 - PRODUCTION       │    │   EC2 - PUBLIC FACING        │
+    │   IP: 192.168.50.100          │    │   IP: 13.218.244.32          │
+    │   Tailscale: 100.89.26.128    │    │   Tailscale: 100.101.99.93   │
+    │                               │    │                              │
+    │   ┌─────────────────────┐    │    │   ┌────────────────────┐    │
+    │   │   K3s CLUSTER       │    │    │   │  Python Process    │    │
+    │   │  ├─ LIMS:30007      │    │    │   │  └─ Forensic:9999  │    │
+    │   │  ├─ Finance:30003   │    │    │   │  Nginx Container    │    │
+    │   │  ├─ Pharma:30002    │    │    │   │  └─ Website:80     │    │
+    │   │  ├─ Dashboard:30004 │    │    │   │  Node Exporter      │    │
+    │   │  ├─ ArgoCD:30443    │    │    │   │  └─ Metrics:9100   │    │
+    │   │  ├─ PostgreSQL      │    │    │   └────────────────────┘    │
+    │   │  └─ Promtail        │    │    └──────────────────────────────┘
+    │   └─────────────────────┘    │                    │
+    │                               │                    │
+    │   ┌─────────────────────┐    │                    │
+    │   │  DOCKER SERVICES    │    │                    │
+    │   │  ├─ Jenkins:30080   │    │                    │
+    │   │  ├─ Prometheus:9090  │    │                    │
+    │   │  └─ Registry:5000    │    │                    │
+    │   └─────────────────────┘    │                    │
+    └───────────────────────────────┘                    │
+                    │                                     │
+                    │ Logs & Metrics                     │ Metrics
+                    ▼                                     ▼
+    ┌─────────────────────────────────────────────────────────────────┐
+    │                    SERVER 2 - MONITORING                        │
+    │                    IP: 192.168.50.74                            │
+    │                    Tailscale: 100.101.151.6                     │
+    │                                                                 │
+    │    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+    │    │ Grafana:3000 │  │ Prometheus   │  │ Loki:3100    │      │
+    │    │              │◄─│ :9090        │◄─│              │      │
+    │    └──────────────┘  └──────────────┘  └──────────────┘      │
+    └─────────────────────────────────────────────────────────────────┘
+```
+
+### 📊 Service Architecture Matrix
+
+| **Component** | **Server 1** | **Server 2** | **EC2** | **Port** | **Access** |
+|--------------|-------------|-------------|---------|----------|------------|
+| LIMS | ✅ K3s | - | - | 30007 | CloudFlare |
+| Finance | ✅ K3s | - | - | 30003 | CloudFlare |
+| Pharma | ✅ K3s | - | - | 30002 | CloudFlare |
+| Dashboard | ✅ K3s | - | - | 30004 | CloudFlare |
+| Jenkins | ✅ Docker | - | - | 30080 | Internal |
+| ArgoCD | ✅ K3s | - | - | 30443 | Internal |
+| Prometheus | ✅ Docker | ✅ | - | 9090 | Internal |
+| Grafana | - | ✅ | - | 3000 | Direct IP |
+| Loki | - | ✅ | - | 3100 | Internal |
+| Promtail | ✅ K3s | - | - | - | Pushes logs |
+| Forensic | - | - | ✅ Python | 9999 | Tailscale |
+| Portfolio | - | - | ✅ Nginx | 80 | Public |
+
+### 🔄 Data Flow Paths
+
+```
+APPLICATION LOGS FLOW:
+─────────────────────
+K3s Pods (Server1) → Promtail (Server1) → Loki (Server2) → Grafana (Server2)
+
+METRICS FLOW:
+────────────
+K3s Apps (Server1) → Prometheus Docker (Server1) ─┐
+                                                   ├→ Prometheus (Server2) → Grafana
+EC2 Forensic (9999) ──────────────────────────────┘
+
+DEPLOYMENT FLOW:
+───────────────
+GitHub → Jenkins → Registry → kubectl → LIMS
+GitHub → Jenkins → Registry → ArgoCD → Finance/Pharma
+```
+
+### 🌐 Network Routing
 
 ```yaml
-┌─────────────────────────────────────────────────────────────────┐
-│                        INTERNET USERS                           │
-└─────────────────────────────────────────────────────────────────┘
-                    │                          │
-                    ▼                          ▼
-         ┌──────────────────┐       ┌──────────────────┐
-         │  Cloudflare CDN  │       │   AWS EC2        │
-         │  *.jagdevops.co.za│       │  jagdevops.com   │
-         └──────────────────┘       └──────────────────┘
-                    │                          │
-         ┌──────────┴──────────┐              │
-         │  Cloudflare Tunnel  │              │
-         └─────────────────────┘              │
-                    │                          │
-    ┌───────────────▼───────────────┐         ▼
-    │   SERVER 1 - PRODUCTION       │    EC2 INSTANCE
-    │   192.168.50.100              │    13.218.244.32
-    │                               │    ┌──────────────┐
-    │   K3s Cluster:                │    │ • Website:80 │
-    │   • LIMS      :30007          │    │ • Forensic:9999│
-    │   • Finance   :30003          │    │ • Node Exp:9100│
-    │   • Pharma    :30002          │    └──────────────┘
-    │   • Dashboard :30004          │            │
-    │   • ArgoCD    :30443          │            │
-    │                               │            │
-    │   Docker:                     │            │
-    │   • Jenkins   :30080          │            │
-    │   • Prometheus:9090           │            │
-    │   • Registry  :5000           │            │
-    └───────────────────────────────┘            │
-                    │                             │
-                    │ Logs & Metrics              │ Metrics
-                    ▼                             ▼
-    ┌───────────────────────────────┐    ┌──────────────┐
-    │   SERVER 2 - MONITORING       │◄───│  Prometheus  │
-    │   192.168.50.74               │    │   Scrape     │
-    │                               │    └──────────────┘
-    │   • Grafana   :3000           │
-    │   • Prometheus:9090           │
-    │   • Loki      :3100           │
-    └───────────────────────────────┘
+Public Domain Routing via CloudFlare:
+  lims.jagdevops.co.za      → localhost:30007
+  finance.jagdevops.co.za   → localhost:30003
+  pharma.jagdevops.co.za    → localhost:30002
+  dashboard.jagdevops.co.za → localhost:30004
+
+Direct Access:
+  jagdevops.com → EC2:80
+  Grafana       → 192.168.50.74:3000
+
+Internal VPN (Tailscale):
+  Server1: 100.89.26.128
+  Server2: 100.101.151.6
+  EC2:     100.101.99.93
 ```
 
-### Network Topology
+### 📁 Repository Structure
 
 ```
-External Access:
-━━━━━━━━━━━━━━━
-lims.jagdevops.co.za     ─┐
-finance.jagdevops.co.za  ─┼─→ Cloudflare → Server1 (localhost:30xxx)
-pharma.jagdevops.co.za   ─┤
-dashboard.jagdevops.co.za─┘
-
-jagdevops.com ──────────────→ EC2 Instance (Port 80)
-
-Internal Network (Tailscale VPN):
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Server 1:  100.89.26.128
-Server 2:  100.101.151.6  
-EC2:       100.101.99.93
+GitHub Repositories:
+├── JAG-LABSCIENTIFIC-DNA/        # LIMS application
+│   ├── backend/                  # Node.js API
+│   ├── frontend/                 # React UI
+│   └── k8s/                      # Kubernetes manifests
+│
+├── zero-downtime-pipeline/       # Finance & Pharma
+│   ├── k8s/                      # K8s manifests
+│   ├── finance-deployment.yaml
+│   └── pharma-deployment.yaml
+│
+└── digital-evidence-pipeline/    # Forensic monitoring
+    ├── forensic_complete.py      # Running process (EC2)
+    └── scripts/                  # Supporting scripts
 ```
 
-### Service Distribution
+### 🚀 CI/CD Pipelines
 
-| **Server 1 - Production** | **Server 2 - Monitoring** | **EC2 - Public** |
-|---------------------------|---------------------------|------------------|
-| **K3s Services:**         | **Monitoring Stack:**     | **Services:**    |
-| ✓ LIMS Application        | ✓ Grafana Dashboard       | ✓ Portfolio Site |
-| ✓ Finance Trading         | ✓ Prometheus Server       | ✓ Forensic Monitor |
-| ✓ Pharma Management       | ✓ Loki Log Aggregation    | ✓ Node Exporter |
-| ✓ Dashboard UI            |                           |                  |
-| ✓ ArgoCD                  |                           |                  |
-| ✓ PostgreSQL DBs          |                           |                  |
-| ✓ Promtail                |                           |                  |
-|                           |                           |                  |
-| **Docker Services:**      |                           |                  |
-| ✓ Jenkins CI/CD           |                           |                  |
-| ✓ Prometheus              |                           |                  |
-| ✓ Docker Registry         |                           |                  |
+| App | Source | Build | Deploy | Method |
+|-----|--------|-------|---------|---------|
+| LIMS | GitHub | Jenkins #85 | K3s | Direct kubectl |
+| Finance | GitHub | Jenkins → Registry | ArgoCD → K3s | GitOps |
+| Pharma | GitHub | Jenkins → Registry | ArgoCD → K3s | GitOps |
+| Dashboard | GitHub | Direct | K3s | Manual |
+| Forensic | GitHub | None | EC2 | Python script |
 
-### Data Flow Diagram
+**Pipeline Details:**
+- **LIMS**: Jenkins builds, tests, and deploys directly via kubectl
+- **Finance/Pharma**: Jenkins builds Docker images → ArgoCD auto-syncs from k8s/ folder
+- **ArgoCD**: Monitors zero-downtime-pipeline repo, auto-deploys on changes
+
+### 📊 Current Production Status
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                  APPLICATION LAYER                    │
-├──────────────────────────────────────────────────────┤
-│  LIMS │ Finance │ Pharma │ Dashboard                 │
-└───┬──────────┬──────────┬──────────┬────────────────┘
-    │          │          │          │
-    ▼          ▼          ▼          ▼
-┌──────────────────────────────────────────────────────┐
-│                  ORCHESTRATION LAYER                  │
-├──────────────────────────────────────────────────────┤
-│         K3s Cluster (Server 1)                       │
-└───┬──────────────────────────────────────────────────┘
-    │
-    ├─────[Logs via Promtail]────────→ Loki (Server 2)
-    │
-    ├─────[Metrics]──────────────────→ Prometheus (Server 1)
-    │                                         │
-    │                                         ▼
-    │                                   Prometheus (Server 2)
-    │                                         │
-    └─────[Compliance Metrics]────────────────┤
-          (From EC2 Forensic:9999)           │
-                                              ▼
-                                        Grafana (Server 2)
+✅ All Systems Operational
+
+LIMS:      https://lims.jagdevops.co.za      [1 replica]
+Finance:   https://finance.jagdevops.co.za   [2 replicas]
+Pharma:    https://pharma.jagdevops.co.za    [2 replicas]
+Dashboard: https://dashboard.jagdevops.co.za  [1 replica]
+Portfolio: https://jagdevops.com              [nginx]
+Grafana:   http://192.168.50.74:3000         [monitoring]
+
+Forensic Compliance Scores:
+- LIMS Chain Integrity: Active
+- GMP Compliance: 94%
+- SOX Compliance: Monitored
+- Overall Score: 92/100
 ```
 
-### CI/CD Pipeline Flow
+### 🔐 Infrastructure Details
 
-```
-GitHub Repository
-      │
-      ├──[Push]──→ Jenkins (Build #85) ──→ Docker Registry ──→ LIMS
-      │
-      └──[Push]──→ ArgoCD (Auto-sync) ──→ K3s ──→ Finance/Pharma
-```
+**Server 1 (Production)**
+- Ubuntu 24.04 LTS
+- K3s v1.27.4+k3s1
+- 8GB RAM, 4 CPUs
+- Hosts all production apps
 
-### Port Reference
+**Server 2 (Monitoring)**
+- Ubuntu 24.04 LTS
+- Dedicated monitoring stack
+- 4GB RAM, 2 CPUs
+- Centralized observability
 
-```
-Production (Server 1):
-  30002 - Pharma App
-  30003 - Finance App  
-  30004 - Dashboard
-  30007 - LIMS App
-  30080 - Jenkins
-  30443 - ArgoCD
-  5000  - Docker Registry
-  9090  - Prometheus
-
-Monitoring (Server 2):
-  3000  - Grafana
-  3100  - Loki
-  9090  - Prometheus
-
-EC2 Instance:
-  80    - Portfolio Website
-  9100  - Node Exporter
-  9999  - Forensic Collector
-```
-
----
-
-## 📊 Key Metrics
-
-- **Applications**: 4 production apps
-- **Uptime**: 99.9%+ availability
-- **Deployment Method**: GitOps (ArgoCD) + CI/CD (Jenkins)
-- **Monitoring**: Complete observability stack
-- **Compliance**: FDA, SOX, GMP standards tracked
+**EC2 Instance (AWS Mumbai)**
+- Ubuntu 24.04 LTS
+- t2.micro (1GB RAM)
+- Public-facing services
+- Forensic monitoring
 
 ---
 
 ## 🔗 Repositories
 
-- [LIMS](https://github.com/GABRIELS562/JAG-LABSCIENTIFIC-DNA)
-- [Zero-Downtime](https://github.com/GABRIELS562/zero-downtime-pipeline)
-- [Forensic Pipeline](https://github.com/GABRIELS562/digital-evidence-pipeline)
+- [LIMS Application](https://github.com/GABRIELS562/JAG-LABSCIENTIFIC-DNA)
+- [Zero-Downtime Pipeline](https://github.com/GABRIELS562/zero-downtime-pipeline)
+- [Digital Evidence Pipeline](https://github.com/GABRIELS562/digital-evidence-pipeline)
 
 ---
 
-*Clean, production-grade DevOps infrastructure with forensic-level monitoring*
+## Author
+
+**Jaime Gabriels**  
+*DevOps Engineer*
+
+---
+
+*Production-grade infrastructure with comprehensive monitoring and forensic-level compliance tracking*
