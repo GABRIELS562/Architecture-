@@ -1,5 +1,3 @@
-Yes, absolutely add those Grafana dashboard screenshots! Looking at your screenshot, you have excellent monitoring dashboards that demonstrate production-grade infrastructure. Here's the updated README with screenshot placeholders:
-
 # Architecture Overview
 
 ## JAG DevOps Infrastructure
