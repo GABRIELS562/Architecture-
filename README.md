@@ -3,9 +3,9 @@
 Production-grade DevOps infrastructure showcasing Kubernetes orchestration, GitOps deployment, and microservices architecture.
 
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-K3s-326CE5?logo=kubernetes&logoColor=white)](https://k3s.io/)
-[![ArgoCD](https://img.shields.io/badge/GitOps-ArgoCD-EF7B4D?logo=argo&logoColor=white)](https://argoproj.github.io/cd/)
+[![GitHub Actions](https://img.shields.io/badge/CI-GitHub_Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/features/actions)
+[![ArgoCD](https://img.shields.io/badge/CD-ArgoCD-EF7B4D?logo=argo&logoColor=white)](https://argoproj.github.io/cd/)
 [![Docker](https://img.shields.io/badge/Containers-Docker-2496ED?logo=docker&logoColor=white)](https://docker.com/)
-[![Cloudflare](https://img.shields.io/badge/CDN-Cloudflare-F38020?logo=cloudflare&logoColor=white)](https://cloudflare.com/)
 
 ---
 
@@ -50,6 +50,51 @@ flowchart TB
 
 ---
 
+## CI/CD Pipeline
+
+Full GitOps workflow using **GitHub Actions** for CI and **ArgoCD** for CD.
+
+```mermaid
+flowchart LR
+    subgraph Developer
+        CODE["Code Push"]
+    end
+
+    subgraph GHA["GitHub Actions (CI)"]
+        BUILD["Build & Test"]
+        PUSH["Push to GHCR"]
+        VALIDATE["Validate Helm"]
+    end
+
+    subgraph Registry["Container Registry"]
+        GHCR["ghcr.io"]
+    end
+
+    subgraph ARGO["ArgoCD (CD)"]
+        SYNC["Sync Application"]
+        HEALTH["Health Check"]
+    end
+
+    subgraph K8s["Kubernetes"]
+        DEPLOY["Deploy Pods"]
+    end
+
+    CODE --> BUILD --> PUSH --> GHCR
+    BUILD --> VALIDATE
+    GHCR --> SYNC --> HEALTH --> DEPLOY
+    VALIDATE -.->|trigger| SYNC
+```
+
+### Pipeline by Project
+
+| Project | CI (GitHub Actions) | CD (ArgoCD) | Environments |
+|---------|---------------------|-------------|--------------|
+| **LIMS** | Build, Push to GHCR, Smoke Tests | Helm sync, Health checks | Production, Test, Develop |
+| **eShop** | Validate Helm, PR checks | Sync 17 applications | Production |
+| **Forensic** | — | — | Docker (manual) |
+
+---
+
 ## Projects
 
 ### 1. LIMS - Laboratory Information Management System
@@ -58,10 +103,39 @@ Full-stack DNA sample tracking system with multi-environment deployment.
 
 ```mermaid
 flowchart LR
-    GH["GitHub"] -->|push| GHCR["Container Registry"]
-    GH -->|webhook| ARGO["ArgoCD"]
-    ARGO -->|sync| ENV["Production<br/>Test<br/>Develop"]
+    subgraph CI["GitHub Actions"]
+        BUILD["ci.yml<br/>Build & Test"]
+        DEPLOY_P["deploy-production.yml"]
+        DEPLOY_T["deploy-test.yml"]
+        DEPLOY_D["deploy-develop.yml"]
+    end
+
+    subgraph Registry
+        GHCR["ghcr.io/gabriels562"]
+    end
+
+    subgraph CD["ArgoCD"]
+        APP["lims application<br/>Helm + values"]
+    end
+
+    subgraph K8s["Kubernetes Namespaces"]
+        PROD["production"]
+        TEST["test"]
+        DEV["develop"]
+    end
+
+    BUILD -->|push| GHCR
+    DEPLOY_P & DEPLOY_T & DEPLOY_D -->|trigger| APP
+    APP -->|sync| PROD & TEST & DEV
 ```
+
+**Workflows (6):**
+- `ci.yml` — Build, test, push images to GHCR
+- `deploy-production.yml` — Production deployment + smoke tests
+- `deploy-test.yml` — Test environment deployment
+- `deploy-develop.yml` — Development environment deployment
+- `cleanup.yml` — Resource cleanup
+- `load-test.yml` — Locust load testing
 
 | Component | Technology |
 |-----------|------------|
@@ -78,23 +152,46 @@ flowchart LR
 
 ### 2. eShop - Cloud-Native Microservices
 
-Polyglot microservices e-commerce platform demonstrating distributed systems patterns.
+Polyglot microservices e-commerce platform with 17 ArgoCD-managed applications.
 
 ```mermaid
-flowchart TB
-    FE["Frontend<br/>Go"] --> SVC["Business Services<br/>gRPC"]
-    SVC --> DATA["Data Layer"]
-    SVC --> OBS["Observability"]
-
-    subgraph SVC[" "]
-        direction LR
-        S1["Cart"]
-        S2["Checkout"]
-        S3["Payment"]
-        S4["Catalog"]
-        S5["+ 6 more"]
+flowchart LR
+    subgraph CI["GitHub Actions"]
+        VAL["pr-validation.yml<br/>Helm lint"]
+        SVC["services-ci.yml"]
+        PROD["production-deploy.yml"]
     end
+
+    subgraph CD["ArgoCD (17 Apps)"]
+        direction TB
+        FE["frontend"]
+        CART["cartservice"]
+        CHECK["checkoutservice"]
+        MORE["...14 more"]
+    end
+
+    subgraph K8s["eshop namespace"]
+        PODS["Microservices"]
+        DATA["Redis + RabbitMQ + PostgreSQL"]
+    end
+
+    VAL & SVC --> PROD -->|sync all| CD --> K8s
 ```
+
+**Workflows (5):**
+- `pr-validation.yml` — Helm lint and template validation
+- `services-ci.yml` — Service-level CI
+- `production-deploy.yml` — ArgoCD sync trigger
+- `develop-ci.yml` — Development CI
+- `reusable-build.yml` — Shared build workflow
+
+**ArgoCD Applications (17):**
+| Services | Infrastructure |
+|----------|----------------|
+| frontend, cartservice, checkoutservice | postgresql, redis, redis-cart |
+| productcatalogservice, currencyservice | rabbitmq, seq |
+| shippingservice, paymentservice | otel-collector, loadgenerator |
+| emailservice, recommendationservice, adservice | |
 
 | Layer | Technologies |
 |-------|--------------|
@@ -111,13 +208,19 @@ flowchart TB
 
 ### 3. Forensic Evidence Collector
 
-Compliance automation platform with tamper-evident audit trails.
+Compliance automation platform with tamper-evident audit trails. Deployed via Docker on Server 2.
 
 ```mermaid
 flowchart LR
-    API["Python API"] --> HASH["SHA-256<br/>Hash Chain"]
-    HASH --> DB["Evidence Store"]
-    DASH["Dashboard"] -.->|visualize| API
+    subgraph Server2["Docker Host"]
+        API["Python API"]
+        HASH["SHA-256<br/>Hash Chain"]
+        DB["SQLite"]
+        DASH["nginx Dashboard"]
+    end
+
+    API --> HASH --> DB
+    DASH -.->|visualize| API
 ```
 
 | Component | Technology |
@@ -135,22 +238,25 @@ flowchart LR
 
 ## Technology Stack
 
-### Orchestration & Deployment
+### CI/CD
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?logo=githubactions&logoColor=white)
+![ArgoCD](https://img.shields.io/badge/ArgoCD-EF7B4D?logo=argo&logoColor=white)
+![Helm](https://img.shields.io/badge/Helm-0F1689?logo=helm&logoColor=white)
+
+### Orchestration
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?logo=kubernetes&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
-![Helm](https://img.shields.io/badge/Helm-0F1689?logo=helm&logoColor=white)
-![ArgoCD](https://img.shields.io/badge/ArgoCD-EF7B4D?logo=argo&logoColor=white)
+![Traefik](https://img.shields.io/badge/Traefik-24A1C1?logo=traefikproxy&logoColor=white)
 
 ### Infrastructure & Security
 ![Cloudflare](https://img.shields.io/badge/Cloudflare-F38020?logo=cloudflare&logoColor=white)
 ![Vault](https://img.shields.io/badge/Vault-FFEC6E?logo=vault&logoColor=black)
-![Traefik](https://img.shields.io/badge/Traefik-24A1C1?logo=traefikproxy&logoColor=white)
 
 ### Observability
 ![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-000000?logo=opentelemetry&logoColor=white)
 ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?logo=prometheus&logoColor=white)
 
-### Languages & Frameworks
+### Languages
 ![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-339933?logo=node.js&logoColor=white)
@@ -169,12 +275,12 @@ flowchart LR
 
 | Practice | Implementation |
 |----------|----------------|
-| **GitOps** | ArgoCD with automated sync and self-healing |
-| **CI/CD** | GitHub Actions → Container Registry → K8s |
-| **Secrets Management** | HashiCorp Vault + External Secrets Operator |
-| **Zero-Trust Networking** | Cloudflare Tunnels (no exposed ports) |
+| **CI** | GitHub Actions — build, test, push images |
+| **CD** | ArgoCD — GitOps sync with self-healing |
+| **Secrets** | HashiCorp Vault + External Secrets Operator |
+| **Networking** | Cloudflare Tunnels (zero-trust) |
 | **Multi-Environment** | Production, Test, Develop namespaces |
-| **Observability** | OpenTelemetry traces + Prometheus metrics |
+| **Observability** | OpenTelemetry + Prometheus |
 | **Load Testing** | Locust distributed testing |
 
 ---
