@@ -291,7 +291,7 @@ flowchart LR
 |---------|-------------|------|
 | **LIMS** | Lab management system | [View →](https://github.com/GABRIELS562/JAG-LABSCIENTIFIC-DNA) |
 | **eShop Infrastructure** | Kubernetes manifests | [View →](https://github.com/GABRIELS562/eshop-platform-infra) |
-| **Forensic Collector** | Evidence automation | [View →](https://github.com/GABRIELS562/digital-evidence-pipeline) |
+| **Forensic Collector** | Evidence automation | [View →](https://github.com/GABRIELS562/forensic-evidence-collector) |
 | **Portfolio** | Personal website | [View →](https://github.com/GABRIELS562/JAIME-GABRIELS-PORTFOLIO-WEBSITE) |
 
 ---
