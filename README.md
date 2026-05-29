@@ -232,7 +232,7 @@ flowchart LR
 
 **Live:** [dashboards.jagdevops.co.za](https://dashboards.jagdevops.co.za)
 
-**Repository:** [digital-evidence-pipeline](https://github.com/GABRIELS562/digital-evidence-pipeline)
+**Repository:** [forensic-evidence-collector](https://github.com/GABRIELS562/forensic-evidence-collector)
 
 ---
 
@@ -282,6 +282,44 @@ flowchart LR
 | **Multi-Environment** | Production, Test, Develop namespaces |
 | **Observability** | OpenTelemetry + Prometheus |
 | **Load Testing** | Locust distributed testing |
+
+---
+
+## Monitoring & Observability
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    OBSERVABILITY STACK                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │   eShop     │    │    LIMS     │    │  Forensic   │         │
+│  │ Services    │    │   App       │    │  Collector  │         │
+│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘         │
+│         │                  │                  │                 │
+│         ▼                  ▼                  ▼                 │
+│  ┌─────────────────────────────────────────────────────┐       │
+│  │              OpenTelemetry Collector                │       │
+│  │         (traces, metrics, logs)                     │       │
+│  └──────────────────────┬──────────────────────────────┘       │
+│                         │                                       │
+│         ┌───────────────┼───────────────┐                      │
+│         ▼               ▼               ▼                      │
+│  ┌───────────┐   ┌───────────┐   ┌───────────┐                │
+│  │Prometheus │   │   Seq     │   │   Loki    │                │
+│  │ (metrics) │   │  (logs)   │   │  (logs)   │                │
+│  └───────────┘   └───────────┘   └───────────┘                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+| Component | Purpose | Project |
+|-----------|---------|---------|
+| **OpenTelemetry** | Distributed tracing & metrics | eShop |
+| **Prometheus** | Metrics collection & alerting | All |
+| **Seq** | Structured log aggregation | eShop |
+| **Locust** | Load testing with exporters | LIMS |
+| **Health Checks** | Kubernetes probes | All |
 
 ---
 
